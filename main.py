@@ -4,7 +4,7 @@ import discord
 import discord_slash
 import pandas as pd
 
-model_params = pd.read_csv("/Users/austinliu/Downloads/Discord-Chess-Bot-master/data/model_params_20210805.csv")
+model_params = pd.read_csv("path_to_model_params")
 
 from discord.ext import commands
 from calcs import expected_date
