@@ -3,10 +3,10 @@ import datetime
 import numpy as np
 import pandas as pd
 
-model_params = pd.read_csv("data/model_params_20210805.csv")
+model_params = pd.read_csv("/Users/austinliu/Downloads/Discord-Chess-Bot-master/data/model_params_20210805.csv")
 
 # Convert rating history info from JSON to Dataframe
-async def process_rating_history(response_json):
+def process_rating_history(response_json):
     rating_history = dict()
     for x in response_json:
             if x['name'] in ['Bullet','Blitz','Rapid','Classical']:
@@ -18,11 +18,11 @@ async def process_rating_history(response_json):
     return(rating_history)
 
 # Get the values that are inputs to the models
-async def get_predictor_values(rating_history,target_rating,variant):
+def get_predictor_values(rating_history,target_rating,variant):
     target_rating_history = rating_history[variant]
-    t_minus_30 = datetime.today()-timedelta(days=30)
-    t_minus_90 = datetime.today()-timedelta(days=90)
-    t_minus_180 = datetime.today()-timedelta(days=180)
+    t_minus_30 = datetime.datetime.today()-datetime.timedelta(days=30)
+    t_minus_90 = datetime.datetime.today()-datetime.timedelta(days=90)
+    t_minus_180 = datetime.datetime.today()-datetime.timedelta(days=180)
     target_rating_history_30 = target_rating_history.query('date>=@t_minus_30')
     target_rating_history_90 = target_rating_history.query('date>=@t_minus_90')
     target_rating_history_180 = target_rating_history.query('date>=@t_minus_180')    
@@ -46,7 +46,7 @@ async def get_predictor_values(rating_history,target_rating,variant):
     return(predictor_values)
 
 # Calculate the probability of success given a set of predictor values and a classification model
-async def get_prob_success(predictor_values,model_params):
+def get_prob_success(predictor_values,model_params = model_params):
     logit_params = model_params[['var_name','logit']].dropna()
     linear_combo = 0
     for i in range(len(logit_params)):
@@ -63,7 +63,7 @@ async def get_prob_success(predictor_values,model_params):
     return str(round(100*1/(1+np.exp(-1*(linear_combo)))))+"%"
 
 # Calculate the predicted days until target rating given a set of predictor values and a regression model
-async def get_predicted_date(predictor_values,model_params):
+def get_predicted_date(predictor_values,model_params = model_params):
     ols_params = model_params[['var_name','ols']].dropna()
     predicted_days = 0
     for i in range(len(ols_params)):
@@ -79,11 +79,11 @@ async def get_predicted_date(predictor_values,model_params):
         predicted_days += coef*value
     if predicted_days < 0: predicted_days = 0
     elif predicted_days > 365*2: predicted_days = 365*2
-    predicted_date = (datetime.today()+timedelta(days=predicted_days)).strftime(format="%B %d, %Y")
+    predicted_date = (datetime.datetime.today()+datetime.timedelta(days=predicted_days)).strftime(format="%B %d, %Y")
     return(predicted_date)
 
 # Return the predictions based on discord inputs
-async def score(username,target_rating,variant,model_params):
+def score(username,target_rating,variant,model_params = model_params):
     url = f'https://lichess.org/api/user/{username}/rating-history'
     variant = variant.capitalize()
     response = requests.get(url)
@@ -95,45 +95,45 @@ async def score(username,target_rating,variant,model_params):
         predictor_values = get_predictor_values(rating_history,target_rating,variant)
         prob_success = get_prob_success(predictor_values,model_params)
         predicted_date = get_predicted_date(predictor_values,model_params)
-        return(prob_success,predicted_date)
+        return (prob_success,predicted_date)
 
 
-async def expected_date(name, rating, variant='Rapid'):
+def expected_date(name, rating, variant='Rapid'):
     if variant in ['Bullet','Blitz','Rapid','Classical']:
-        prob_success,predicted_date = score(username = name, target_rating = rating,
-          variant = variant, model_params = model_params)
+        (prob_success,predicted_date) = score(username = name, target_rating = rating, variant = variant, model_params = model_params)
         return(prob_success,predicted_date)
-    url = f'https://lichess.org/api/user/{name}/rating-history'
-    response = requests.get(url)
-    if not str(response.status_code).startswith('2'):
-        return -1
-    data = requests.get(url).json()
-    rating_values = []
-    exp_rating_values = []
-    date_values = []
-    points = []
+    # url = f'https://lichess.org/api/user/{name}/rating-history'
+    # response = requests.get(url)
+    # if not str(response.status_code).startswith('2'):
+    #     return -1
+    # data = requests.get(url).json()
+    # rating_values = []
+    # exp_rating_values = []
+    # date_values = []
+    # points = []
     
-    for game_type in data:
-        if game_type['name'] != variant:
-            continue
-        else:
-            points = game_type['points']
+    # for game_type in data:
+    #     if game_type['name'] != variant:
+    #         continue
+    #     else:
+    #         points = game_type['points']
 
-    if len(points) < 25:
-        return None
+    # if len(points) < 25:
+    #     return None
 
-    for point in points:
-        date_values.append(datetime.date(point[0], point[1]+1, point[2]))
-        exp_rating_values.append(3 ** (point[3] / 300))
-        rating_values.append(point[3])
+    # for point in points:
+    #     date_values.append(datetime.date(point[0], point[1]+1, point[2]))
+    #     exp_rating_values.append(3 ** (point[3] / 300))
+    #     rating_values.append(point[3])
 
-    # Compute the best-fit line
-    start_date = min(date_values)
-    days_since_start_values = [(date-start_date).days for date in date_values]
+    # # Compute the best-fit line
+    # start_date = min(date_values)
+    # days_since_start_values = [(date-start_date).days for date in date_values]
 
-    coeffs = np.polyfit(days_since_start_values, exp_rating_values, 1)
+    # coeffs = np.polyfit(days_since_start_values, exp_rating_values, 1)
 
-    days_since_start = ((3 ** (rating/300)) - coeffs[1])/coeffs[0]
-    return start_date + datetime.timedelta(days=days_since_start)
+    # days_since_start = ((3 ** (rating/300)) - coeffs[1])/coeffs[0]
+    # print('test16')
+    # return start_date + datetime.timedelta(days=days_since_start)
 
 
